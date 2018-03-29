@@ -34,6 +34,8 @@ class SongCrawler:
         links = self.get_links_from_page(self.page_url)
         for link in links:
             song = self.get_song_from_link(link)
+            if song is None:
+                continue
             self.counter += 1
             print(self.counter)
             self.write_to_file(song, "../data/{}.txt".format(self.counter))
@@ -51,12 +53,15 @@ class SongCrawler:
         return links
 
     def get_song_from_link(self, link):
-        page = self.get_page(link)
-        document = html.fromstring(page.text)
-        name = document.xpath('//h2[@class="name"]/text()')[0]
-        artist = document.xpath('//div[@class="artist"]/a/text()')[0]
-        lyric = document.xpath('//div[@class="lyric"]')[0].text_content()
-        return Song(name, artist, lyric)
+        try:
+            page = self.get_page(link)
+            document = html.fromstring(page.text)
+            name = document.xpath('//h2[@class="name"]/text()')[0]
+            artist = document.xpath('//div[@class="artist"]/a/text()')[0]
+            lyric = document.xpath('//div[@class="lyric"]')[0].text_content()
+            return Song(name, artist, lyric)
+        except:
+            return None
 
 
 def main():
