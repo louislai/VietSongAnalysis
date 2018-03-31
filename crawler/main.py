@@ -71,7 +71,7 @@ class SongCrawler:
 def main():
     print("Start")
 
-    page_num = 1
+    page_num = 797
     couter = 0
 
     for idx in range(1, page_num + 1):
