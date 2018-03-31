@@ -56,18 +56,22 @@ class SongCrawler:
         try:
             page = self.get_page(link)
             document = html.fromstring(page.text)
+            for br in document.xpath("*//br"):
+                br.tail = " " + br.tail if br.tail else " "
             name = document.xpath('//h2[@class="name"]/text()')[0]
             artist = document.xpath('//div[@class="artist"]/a/text()')[0]
             lyric = document.xpath('//div[@class="lyric"]')[0].text_content()
+            lyric = re.sub(" +", " ", lyric).strip()
             return Song(name, artist, lyric)
-        except:
+        except Exception as e:
+            print(e)
             return None
 
 
 def main():
     print("Start")
 
-    page_num = 797
+    page_num = 1
     couter = 0
 
     for idx in range(1, page_num + 1):
