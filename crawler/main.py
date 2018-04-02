@@ -5,10 +5,12 @@ import re
 
 
 class Song:
-    def __init__(self, name, artist, lyric):
+    def __init__(self, name, artist, lyric, presentor, genres):
         self.name = name.strip().lower()
         self.artist = artist.strip().lower()
         self.lyric = lyric.strip().lower()
+        self.presentor = presentor.strip().lower()
+        self.genres = genres.strip().lower()
 
     def fix_name(self, name):
         name = re.sub('- REMIX$', '', name)
@@ -17,6 +19,8 @@ class Song:
     def __str__(self):
         return (self.name.encode("UTF-8") +
                 "\n" + self.artist.encode("UTF-8") +
+                "\n" + self.presentor.encode("UTF-8") +
+                "\n" + self.genres.encode("UTF-8") +
                 "\n" + self.lyric.encode("UTF-8") + "\n")
 
 
@@ -52,6 +56,31 @@ class SongCrawler:
 
         return links
 
+    def get_extra_info_from_link(self, page_url):
+        try:
+            page = self.get_page(page_url)
+            document = html.fromstring(page.text)
+            presentor = document.xpath(
+                '//h2[@class="txt-primary artist-track-log"]/a/text()')[0]
+            genres = document.xpath('//a[@class="genre-track-log"]/text()')
+            genres = ",".join(genres)
+            return presentor, genres
+        except Exception as e:
+            print(e)
+            return "", ""
+
+    def get_extra_info(self, song_name):
+        try:
+            page = self.get_page(
+                "https://mp3.zing.vn/tim-kiem/bai-hat.html?q={}".format(song_name.encode("UTF-8")))
+            document = html.fromstring(page.text)
+            link = document.xpath('//div[@class="item-song"]/div/a/@href')[0]
+            return self.get_extra_info_from_link(
+                "https://mp3.zing.vn{}".format(link))
+        except Exception as e:
+            print(e)
+            return "", ""
+
     def get_song_from_link(self, link):
         try:
             page = self.get_page(link)
@@ -62,7 +91,8 @@ class SongCrawler:
             artist = document.xpath('//div[@class="artist"]/a/text()')[0]
             lyric = document.xpath('//div[@class="lyric"]')[0].text_content()
             lyric = re.sub(" +", " ", lyric).strip()
-            return Song(name, artist, lyric)
+            presentor, genres = self.get_extra_info(name)
+            return Song(name, artist, lyric, presentor, genres)
         except Exception as e:
             print(e)
             return None
@@ -71,7 +101,7 @@ class SongCrawler:
 def main():
     print("Start")
 
-    page_num = 797
+    page_num = 1
     couter = 0
 
     for idx in range(1, page_num + 1):
