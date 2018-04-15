@@ -5,21 +5,24 @@ import re
 
 
 class Song:
-    def __init__(self, name, artist, lyric, presentor, genres):
+    def __init__(self, name, artist, lyric, presentors, genres):
         self.name = name.strip().lower()
         self.artist = artist.strip().lower()
         self.lyric = lyric.strip().lower()
-        self.presentor = presentor.strip().lower()
+        self.presentors = presentors.strip().lower()
         self.genres = genres.strip().lower()
 
-    def fix_name(self, name):
-        name = re.sub('- REMIX$', '', name)
+    @staticmethod
+    def fix_name(name):
+        name = name.lower().strip()
+        name = re.sub('- remix$', '', name)
+        name = re.sub('\(remix\)$', '', name)
         return name.strip()
 
     def __str__(self):
         return (self.name.encode("UTF-8") +
                 "\n" + self.artist.encode("UTF-8") +
-                "\n" + self.presentor.encode("UTF-8") +
+                "\n" + self.presentors.encode("UTF-8") +
                 "\n" + self.genres.encode("UTF-8") +
                 "\n" + self.lyric.encode("UTF-8") + "\n")
 
@@ -56,27 +59,66 @@ class SongCrawler:
 
         return links
 
+    # def get_extra_info_from_link(self, page_url):
+    #     try:
+    #         page = self.get_page(page_url)
+    #         document = html.fromstring(page.text)
+    #         presentor = document.xpath(
+    #             '//h2[@class="txt-primary artist-track-log"]/a/text()')[0]
+    #         genres = document.xpath('//a[@class="genre-track-log"]/text()')
+    #         genres = ",".join(genres)
+    #         return presentor, genres
+    #     except Exception as e:
+    #         print(e)
+    #         return "", ""
+
+    # def get_extra_info(self, song_name):
+    #     try:
+    #         page = self.get_page(
+    #             "https://mp3.zing.vn/tim-kiem/bai-hat.html?q={}".format(song_name.encode("UTF-8")))
+    #         document = html.fromstring(page.text)
+    #         link = document.xpath('//div[@class="item-song"]/div/a/@href')[0]
+    #         return self.get_extra_info_from_link(
+    #             "https://mp3.zing.vn{}".format(link))
+    #     except Exception as e:
+    #         print(e)
+    #         return "", ""
+
     def get_extra_info_from_link(self, page_url):
         try:
             page = self.get_page(page_url)
             document = html.fromstring(page.text)
-            presentor = document.xpath(
-                '//h2[@class="txt-primary artist-track-log"]/a/text()')[0]
             genres = document.xpath('//a[@class="genre-track-log"]/text()')
-            genres = ",".join(genres)
-            return presentor, genres
+            return genres
         except Exception as e:
             print(e)
-            return "", ""
+            return []
 
     def get_extra_info(self, song_name):
         try:
             page = self.get_page(
                 "https://mp3.zing.vn/tim-kiem/bai-hat.html?q={}".format(song_name.encode("UTF-8")))
             document = html.fromstring(page.text)
+            items = document.xpath('//div[@class="item-song"]')
+            if len(items) == 0:
+                return "", ""
             link = document.xpath('//div[@class="item-song"]/div/a/@href')[0]
-            return self.get_extra_info_from_link(
+            genres = self.get_extra_info_from_link(
                 "https://mp3.zing.vn{}".format(link))
+            presentors = []
+            for item in items:
+                title = item.xpath('.//a/@title')[0]
+                values = title.split("-")
+                name = values[0].strip()
+                presentor = values[1].strip()
+                if Song.fix_name(name) == Song.fix_name(song_name):
+                    ps = presentor.split(",")
+                    presentors.extend(ps)
+
+            presentors = [x.strip() for x in presentors]
+            presentors = list(set(presentors))
+            return ",".join(presentors), ",".join(genres)
+
         except Exception as e:
             print(e)
             return "", ""
@@ -87,12 +129,13 @@ class SongCrawler:
             document = html.fromstring(page.text)
             for br in document.xpath("*//br"):
                 br.tail = " " + br.tail if br.tail else " "
-            name = document.xpath('//h2[@class="name"]/text()')[0]
+            name = Song.fix_name(document.xpath(
+                '//h2[@class="name"]/text()')[0])
             artist = document.xpath('//div[@class="artist"]/a/text()')[0]
             lyric = document.xpath('//div[@class="lyric"]')[0].text_content()
             lyric = re.sub(" +", " ", lyric).strip()
-            presentor, genres = self.get_extra_info(name)
-            return Song(name, artist, lyric, presentor, genres)
+            presentors, genres = self.get_extra_info(name)
+            return Song(name, artist, lyric, presentors, genres)
         except Exception as e:
             print(e)
             return None
