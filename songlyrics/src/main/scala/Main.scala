@@ -99,6 +99,47 @@ object Main {
     })
   }
 
+  def topPerformers(df: DataFrame, outDir: String) {
+    val data = df.groupBy("performer")
+      .count()
+      .sort(desc("count"))
+      .select("performer", "count")
+      .limit(50)
+
+    data.show()
+
+    data.write
+      .format("com.databricks.spark.csv")
+      .option("header", "true")
+      .save(outDir)
+  }
+
+  def topAllPerformers(performersDF: DataFrame): Unit = {
+    val outDir = s"$OUTPUT_DIR/performer/top-performer.csv"
+    topPerformers(performersDF, outDir)
+  }
+
+  def topPerformersForGenres(performersDF: DataFrame, genresDF: DataFrame) {
+    val topGenres =
+      genresDF
+        .groupBy("genre")
+        .count()
+        .sort(desc("count"))
+        .take(10)
+        .map(g => g.get(0))
+        .filter(x => x != null)
+
+    topGenres.foreach(x => {
+      val genre = x.toString()
+      val df = genresDF
+        .filter(col("genre") === genre)
+        .join(performersDF, "song_id")
+        .select("performer")
+      val outDir = s"$OUTPUT_DIR/performer/top-performer-per-genre/$genre.csv"
+      topPerformers(df, outDir)
+    })
+  }
+
   def main(args: Array[String]): Unit = {
     Logger.getLogger("org").setLevel(Level.OFF)
     Logger.getLogger("akka").setLevel(Level.OFF)
@@ -110,12 +151,14 @@ object Main {
       .getOrCreate()
 
     val songsDF = spark.read.option("header", true).csv("/home/hadoop/spark-data/dataset/songs.csv")
-    val performers = spark.read.option("header", true).csv("/home/hadoop/spark-data/dataset/performers.csv")
-    val genres = spark.read.option("header", true).csv("/home/hadoop/spark-data/dataset/genres.csv")
+    val performersDF = spark.read.option("header", true).csv("/home/hadoop/spark-data/dataset/performers.csv")
+    val genresDF = spark.read.option("header", true).csv("/home/hadoop/spark-data/dataset/genres.csv")
 
     val stopWords = spark.sparkContext.textFile("/home/hadoop/spark-data/dataset/stopwords.txt").collect()
 
 //    countLyricWords(songsDF, stopWords)
-    countGenreLyricWords(genres, songsDF, stopWords)
+//    countGenreLyricWords(genresDF, songsDF, stopWords)
+//    topAllPerformers(performersDF)
+//    topPerformersForGenres(performersDF, genresDF)
   }
 }
