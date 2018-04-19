@@ -26,7 +26,7 @@ class Hasher(a : Int, b : Int, p: Int, m : Int) extends Serializable {
 object Hasher {
   /** create a new instance providing p and m. a and b random numbers mod p */
   private val p = 2038074743
-  private val m = 1000
+  private val m = 1000000000
 
   def create() = new Hasher(a(Hasher.p), b(p), p, m)
 

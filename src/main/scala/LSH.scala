@@ -3,7 +3,7 @@ package main.scala
 
 
 import org.apache.hadoop.fs.FileSystem
-import org.apache.spark.sql.{Row, SparkSession}
+import org.apache.spark.sql.{DataFrame, Row, SparkSession}
 import org.apache.spark.ml.feature._
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.{SparkConf, SparkContext}
@@ -46,27 +46,31 @@ object LSH {
     val twogramcvModel = twogramcv.fit(twogramDf)
 
     // Buggy song: 11396, 8387
+    val nStart = 1
+    val nEnd = 2
+    val nRange = Range(nStart, nEnd + 1)
+    val multipleCvDf = nRange.foldLeft[DataFrame](wordDf)((prev, i) => {
+      val nGram = new NGram().setN(i).setInputCol("words").setOutputCol(s"${i}_grams")
+      val nGramDf = nGram.transform(prev)
+      val ngramCv = new CountVectorizer().setInputCol(s"${i}_grams").setOutputCol(s"${i}_features")
+      val ngramCvModel = ngramCv.fit(nGramDf)
+      ngramCvModel.transform(nGramDf)
+    })
+
     val isNoneZeroVector = udf({v: Vector => v.numNonzeros > 0}, DataTypes.BooleanType)
-    val twogramcvDf = twogramcvModel.transform(twogramDf).drop("twograms")
-      .filter(isNoneZeroVector(col("features_2gram")))
 
-    val onegram = new NGram().setN(1).setInputCol("words").setOutputCol("onegrams")
-    val onegramDf = onegram.transform(twogramcvDf).drop("words")
-
-    val onegramcv = new CountVectorizer().setInputCol("onegrams").setOutputCol("features_1gram")
-    val onegramcvModel = onegramcv.fit(onegramDf)
-    val onegramcvDf = onegramcvModel.transform(onegramDf).drop("onegrams")
-      .filter(isNoneZeroVector(col("features_1gram")))
-
-    // Assemble 1-gram and 2-gram
+    // Assemble n-gram count vectorizer
     val assembler = new VectorAssembler()
-      .setInputCols(Array("features_1gram", "features_2gram"))
+      .setInputCols(nRange.map(i => s"${i}_features").toArray)
       .setOutputCol("features")
 
-    val cvDf = assembler.transform(onegramcvDf)
+    val cvDf = assembler.transform(multipleCvDf)
+      .filter(isNoneZeroVector(col("features")))
+      .select("song_id", "name", "artist", "features")
     cvDf.show()
+    // 274572 features
 
-    val numRow = 100
+    val numRow = 1000
     val _hashFunctions = ListBuffer[Hasher]()
     for (i <- 0 until numRow)
       _hashFunctions += Hasher.create()
@@ -74,7 +78,7 @@ object LSH {
     val minHashUdf = udf((x: Vector) => hashFunctions.map(_._1.minhash(x.toSparse)))
     val mhDf = cvDf.withColumn("hashes", minHashUdf(col("features"))).drop("features")
 
-    val songIds = Array("bức thư tình đầu tiên", "bức thư tình thứ hai")
+    val songIds = Array("yêu lại từ đầu")
     val searchSongs = mhDf.filter(col("name").isin(songIds:_*)).select(col("hashes")).collect()
       .map(row => row.getAs[WrappedArray[Int]](0))
 
@@ -83,9 +87,11 @@ object LSH {
     val jacDf = mhDf.filter(!col("name").isin(songIds:_*))
       .withColumn("jaccard", jaccardSearchSongsUdf(col("hashes")))
 
-    jacDf.orderBy(col("jaccard").desc).select(col("name")).show()
+    jacDf.orderBy(col("jaccard").desc)
+      .select("name", "artist", "jaccard")
+      .toJavaRDD.saveAsTextFile("file:///Users/louis/VietSongAnalysis/yeulaitudau")
 
-    val composers = Array("trịnh công sơn")
+    val composers = Array("khắc việt")
     val composerSongs =  mhDf.filter(col("artist").isin(composers:_*)).select(col("hashes")).collect()
       .map(row => row.getAs[WrappedArray[Int]](0))
 
@@ -93,7 +99,8 @@ object LSH {
     val artistResultDf = mhDf.filter(!col("artist").isin(composers:_*))
       .withColumn("jaccard", jaccardComposerSongsUdf(col("hashes")))
       .groupBy("artist").agg((sum("jaccard") / count("*")).alias("mean_jaccard"))
-      .orderBy(col("mean_jaccard").desc).show()
+      .orderBy(col("mean_jaccard").desc)
+      .toJavaRDD.saveAsTextFile("file:///Users/louis/VietSongAnalysis/khacviet")
 
 
   }
